@@ -1,0 +1,668 @@
+---
+title: 'PSI_Assignment 2: Independent Project: Linear regression models'
+author: "Na Li (D19125334)"
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = FALSE)
+needed_packages <- c("VIM", "tidyverse","pastecs", "ggplot2", "semTools", "psych", "FSA", "car", "effectsize", "coin", "rstatix", "sjstats", "userfriendlyscience", "stats", "foreign", "gmodels", "lm.beta","stargazer", "lmtest", "DescTools", "nnet", "reshape2", "generalhoslem", "Epi", "arm", "regclass", "olsrr","REdaS", "Hmisc","corrplot","ggcorrplot", "factoextra", "nFactors","readxl")   
+
+# Extract not installed packages
+not_installed <- needed_packages[!(needed_packages %in% installed.packages()[, "Package"])]    
+# Install not installed packages
+if(length(not_installed)) 
+  install.packages(not_installed) 
+
+library(pastecs) #For creating descriptive statistic summaries
+library(ggplot2) #For creating histograms with more detail than plot
+library(semTools) #For skewness and kurtosis
+library(psych)  #For descriptive functions
+library(FSA) #For percentage
+library(car) # For Levene's test for homogeneity of variance and  test for colinearity of predictors
+library(effectsize) #To calculate effect size for t-test
+library(VIM)
+library(tidyverse)
+library(coin) # For Wilcox test (non-parametric)
+library(rstatix) # For calculating effect size
+library(sjstats) #calculate effect size for t-test
+library(userfriendlyscience)
+library(stats)
+library(foreign) # open SPSS file, I may not use that.
+library(gmodels) #For creating histograms with more detail than plot
+library(stargazer)#For formatting outputs/tables for regression
+library(lm.beta) # to isolate the beta co-efficients for regression
+
+#Multinomial regression
+library(lmtest)
+library(DescTools)
+library(nnet) #Multinomial regression
+library(reshape2)
+library(generalhoslem) #For test of fit for logistic regression, test assumption of linearity
+library(Epi) #ROC Curve
+library(arm) #for invlogit calculating predicted probabilities
+library(regclass) #For confusion matrix
+library(olsrr)
+
+library(dplyr)
+library(broom)
+library(ggpubr)
+
+#Dimension Reduction
+library(REdaS)
+library(Hmisc)
+library(corrplot)
+library(ggcorrplot)
+library(factoextra) #Used for principal component analysis to get a different view of eigenvalues
+library(nFactors)
+
+library("readxl")
+```
+
+```{r initial dataset, echo=TRUE}
+data_acperfor <- read_excel("data_academic_performance.xlsx", sheet = "SABER11_SABERPRO")
+colnames(data_acperfor) <- tolower(colnames(data_acperfor))
+
+head(data_acperfor)
+summary(data_acperfor)
+```
+# set up a quantitiative research question
+
+What is a relationship for those male and female engineering students between the overall average score of the professional evaluation with formulation of engineering projects and mathematics in Colombia.
+
+# Data Explorsion
+Dependent variable: g_sc: the overall average score of the professional evaluation  
+Independent variables: 
+1. fep_pro: Formulation of Engineering Projects
+2. mat_s11 (Mathematics: only one subject for the two periods, check whether it impacts the global scores g_sc.)
+3. gender (binary: F/M)  ---- before need to check whether differences
+
+*** add interaction term to explore more: fep_pro*mat_s11 as interaction variable for model 3
+```{r g_sc variable, echo=TRUE}
+# statistics descpritve
+# g_sc summary statistics
+pastecs::stat.desc(data_acperfor$g_sc, basic=F)
+summary(data_acperfor$g_sc)
+# Analyze Normality --- Dependent variable: g_sc
+gg_gsc <- ggplot(data_acperfor, aes(x=g_sc)) +
+  labs(x="g_sc") +
+  ggtitle("Figure 1 - Histogram for Normalised g_sc") +
+  geom_histogram(binwidth=2, colour="black", aes(y=..density.., fill=..count..)) +
+  scale_fill_gradient("Count", low="#DCDCDC", high="#7C7C7C") + 
+  stat_function(fun=dnorm, color="red",args=list(mean=mean(data_acperfor$g_sc, na.rm=TRUE), sd=sd(data_acperfor$g_sc, na.rm=TRUE)))
+
+gg_gsc
+
+qqnorm(data_acperfor$g_sc, main="Figure 2 - QQ Plot for Normalised g_sc")
+qqline(data_acperfor$g_sc, col=2)
+
+#skewness and kurtosis
+tpskew <- semTools::skew(data_acperfor$g_sc)
+tpkurt <- semTools::kurtosis(data_acperfor$g_sc)
+
+
+tpskew[1]/tpskew[2]
+tpkurt[1]/tpkurt[2]
+
+gsc<- abs(scale(data_acperfor$g_sc))
+FSA::perc(as.numeric(gsc), 1.96, "gt")
+FSA::perc(as.numeric(gsc), 3.29, "gt")
+
+```
+
+```{r math variable, echo=TRUE}
+# statistics descpritve
+# mat_s11: summary statistics
+pastecs::stat.desc(data_acperfor$mat_s11, basic=F)
+summary(data_acperfor$mat_s11)
+# Analyze Normality  --- independent variable: mat_s11
+gg_fegpro <- ggplot(data_acperfor, aes(x=mat_s11)) +
+  labs(x="mat_s11") +
+  ggtitle("Figure 3 - Histogram for Normalised mat_s11") +
+  geom_histogram(binwidth=2, colour="black", aes(y=..density.., fill=..count..)) +
+  scale_fill_gradient("Count", low="#DCDCDC", high="#7C7C7C") + 
+  stat_function(fun=dnorm, color="red",args=list(mean=mean(data_acperfor$mat_s11, na.rm=TRUE), sd=sd(data_acperfor$mat_s11, na.rm=TRUE)))
+
+gg_fegpro
+
+qqnorm(data_acperfor$mat_s11, main="Figure 4 - QQ Plot for Normalised mat_s11")
+qqline(data_acperfor$mat_s11, col=2)
+
+#skewness and kurtosis
+tpskew <- semTools::skew(data_acperfor$mat_s11)
+tpkurt <- semTools::kurtosis(data_acperfor$mat_s11)
+
+
+tpskew[1]/tpskew[2]
+tpkurt[1]/tpkurt[2]
+
+mats11<- abs(scale(data_acperfor$mat_s11))
+FSA::perc(as.numeric(mats11), 1.96, "gt")
+FSA::perc(as.numeric(mats11), 3.29, "gt")
+
+```
+```{r fep_pro variable, echo=TRUE}
+# statistics descpritve
+# fep_pro summary statistics
+pastecs::stat.desc(data_acperfor$fep_pro, basic=F)
+summary(data_acperfor$fep_pro)
+# Analyze Normality  --- independent variable: fep_pro
+gg_fegpro <- ggplot(data_acperfor, aes(x=fep_pro)) +
+  labs(x="fep_pro") +
+  ggtitle("Figure 5 - Histogram for Normalised fep_pro") +
+  geom_histogram(binwidth=2, colour="black", aes(y=..density.., fill=..count..)) +
+  scale_fill_gradient("Count", low="#DCDCDC", high="#7C7C7C") + 
+  stat_function(fun=dnorm, color="red",args=list(mean=mean(data_acperfor$fep_pro, na.rm=TRUE), sd=sd(data_acperfor$fep_pro, na.rm=TRUE)))
+
+gg_fegpro
+
+qqnorm(data_acperfor$fep_pro, main="Figure 6 - QQ Plot for Normalised fep_pro")
+qqline(data_acperfor$fep_pro, col=2)
+
+#skewness and kurtosis
+tpskew <- semTools::skew(data_acperfor$fep_pro)
+tpkurt <- semTools::kurtosis(data_acperfor$fep_pro)
+
+
+tpskew[1]/tpskew[2]
+tpkurt[1]/tpkurt[2]
+
+feppro<- abs(scale(data_acperfor$fep_pro))
+FSA::perc(as.numeric(feppro), 1.96, "gt")
+FSA::perc(as.numeric(feppro), 3.29, "gt")
+
+```
+```{r check imbalance data, echo=TRUE}
+# checking whether data is balance, gender
+
+summary(as.factor(data_acperfor$gender))
+#for female variable 
+female_var = table(data_acperfor$gender)["F"]/(table(data_acperfor$gender)["F"]+table(data_acperfor$gender)["M"])
+male_var = table(data_acperfor$gender)["M"]/(table(data_acperfor$gender)["F"]+table(data_acperfor$gender)["M"])
+print(female_var) #0.41
+print(male_var)#0.59
+```
+```{r missing data, echo=TRUE}
+# missing data
+#1. visualise the messing data level and pattern
+varsint <- c("fep_pro", "mat_s11", "g_sc", "gender")
+acperfor_subset <- data_acperfor[varsint]
+summary(acperfor_subset)
+
+#Create and inspect patterns of missingness
+res<-summary(VIM::aggr(acperfor_subset, sortVar=TRUE))$combinations
+
+### result: no missing data
+```
+
+```{r correlation, echo=TRUE}
+# correlation between fep_pro and g_sc
+# show scatterplot of g_sc (y) and fep_pro (x)
+scat_fepsc <- ggplot2::ggplot(data_acperfor, aes(fep_pro, g_sc)) 
+
+#Add a regression line
+scat_fepsc + geom_point() + geom_smooth(method = "lm", colour = "Red", se = F) + labs(x = "fep_pro", y = "Normalised g_sc") 
+
+#Pearson Correlation
+stats::cor.test(data_acperfor$fep_pro, data_acperfor$g_sc, method='pearson')
+
+####################################################################################################
+# correlation between mat_s11 and g_sc
+#show scatterplot of g_sc (y) and  mat_s11 (x)
+scat_fepsc <- ggplot2::ggplot(data_acperfor, aes(mat_s11, g_sc))
+#Add a regression line
+scat_fepsc + geom_point() + geom_smooth(method = "lm", colour = "Red", se = F) + labs(x = "mat_s11", y = "Normalised g_sc") 
+#Pearson Correlation
+stats::cor.test(data_acperfor$mat_s11, data_acperfor$g_sc, method='pearson')
+```
+notes:
+1. correlation with fep_pro and g_sc is weak positive correlation (r = 0.37)
+2. correlation with mat_s11 and g_sc is moderate positive correlation (r=0.64)
+
+```{r difference_describe, echo=TRUE}
+# checking the difference g_sc by gender
+# add gender to investigate a differential effect
+# independent t-test 
+psych::describeBy(data_acperfor$g_sc, data_acperfor$gender, mat=TRUE)
+```
+```{r difference_levens test, echo=TRUE}
+# Levene's test for homogeneity of variable
+car::leveneTest(g_sc ~ gender, data=data_acperfor)
+```
+
+```{r difference_t_test, echo=TRUE}
+# t test
+res <- stats::t.test(g_sc ~ gender, var.equal=TRUE, data=data_acperfor)
+res
+```
+```{r difference_effectsize_cohens, echo=TRUE}
+# Cohen's d 
+# 0.2=small effect, 0.5=moderate, 0.8 = large
+effsize_gender = round((2*res$statistic)/sqrt(res$parameter), 2)
+effsize_gender
+effectsize::t_to_d(t=res$statistic, res$parameter)
+```
+```{r difference_effectsize_eta, echo=TRUE}
+# Eta
+# reporting guideline: on effect size: 0.01 = small, 0.06 = moderate, 0.14 =large
+effes=round((res$statistic*res$statistic)/((res$statistic*res$statistic)+(res$parameter)),3)
+effes
+```
+
+Report this t-test result:
+```
+1. Reporting the results with Cohen’s d effect
+An independent-samples t-test was conducted to the overall average score of the professional evaluation (g_sc) for female and male students. There is a slight Significant difference in the scores for the overall average score of the professional evaluation  was found (M=161.28, SD=22.33 for female students, M=163.69, SD=23.58 for male students), t(12409)=-5.72, p-value < 0.001). Cohen's d also indicated a small effect size (-0.10). 
+
+2. Reporting the results with eta squared effect
+An independent-samples t-test was conducted to compare to the overall average score of the professional evaluation (g_sc) for female and male students. There is a slight Significant difference in the scores for the overall average score of the professional evaluation was found (M=161.28, SD=22.33 for female students, M=163.69, SD=23.58 for male students), t(12409)=-5.72, p-value < 0.001). A small effect size was also indicated by the eta squared value (0.003).
+```
+
+# Build Linear regression
+
+```{r MLR_Model1, echo=TRUE}
+# MLR_Model1
+# independent variable: fep_pro, mat_s11
+# dependent variable: g_sc
+
+mmodel_1 <- lm(data_acperfor$g_sc ~ data_acperfor$fep_pro + data_acperfor$mat_s11)
+anova(mmodel_1)
+cat("\n *******Summary mulit-model*******\n") 
+summary(mmodel_1)
+```
+
+```{r analyize mmodel 1,echo=TRUE}
+lm.beta::lm.beta(mmodel_1)
+stargazer(mmodel_1, type="text")
+```
+```{r}
+# Visualize the results with a graph
+plotting.data<-data_acperfor[c("mat_s11","fep_pro")]
+
+plotting.data$predicted.y <- predict.lm(mmodel_1, newdata=plotting.data)
+
+```
+```{r, echo=TRUE}
+plotg_sc <- ggplot(data_acperfor, aes(x=mat_s11, y=g_sc)) +
+            theme_bw() +
+           geom_point(colour="grey") +
+           geom_line(data=plotting.data, aes(x=mat_s11, y=predicted.y, colour=fep_pro), size=1) +
+           geom_smooth(method = "lm", colour = "red", se = F) + labs(x = "mat_s11", y = "g_sc") +
+          labs(title = "Model 1 Global Score \n as a function of Mathmatics \n and the score of formulation of Engineering Projects",
+              x = "Mathmatics",
+              y = "The average score of the professional evaluation",
+              color = "fep_pro")
+plotg_sc
+```
+
+```{r MLR_Model2, echo=TRUE}
+#dummy code gender to be 0 and 1 as we want by adding a new variable gender to the dataset which recodes gender
+data_acperfor$sex=ifelse(data_acperfor$gender == "M", 0, ifelse(data_acperfor$gender == "F", 1, NA))
+# R automatically recodes categorical to be dummy variable 0 = reference (females), 1 category of interest (males)
+mmodel_2 <- lm(data_acperfor$g_sc ~ data_acperfor$fep_pro + data_acperfor$mat_s11 +data_acperfor$sex)
+cat("\n *******Summary mulit-model*******\n") 
+summary(mmodel_2)
+anova(mmodel_2)
+```
+```{r analyize mmodel 2,echo=TRUE}
+lm.beta::lm.beta(mmodel_2)
+stargazer(mmodel_2, type="text")
+```
+
+```{r}
+# Visualize the results with a graph
+plotting.data2<-data_acperfor[c("mat_s11","fep_pro", "sex")]
+
+plotting.data2$sex <-as.factor(plotting.data2$sex)
+
+plotting.data2$predicted.y <- predict.lm(mmodel_2, newdata=plotting.data2)
+
+```
+```{r, echo=TRUE}
+plotg_sc2 <- ggplot(data_acperfor, aes(x=mat_s11, y=g_sc)) +
+            theme_bw() +
+           geom_point(colour="grey") +
+           geom_line(data=plotting.data2, aes(x=mat_s11, y=predicted.y, colour=sex), size=1.25) +
+           geom_smooth(method = "lm", colour = "red", se = F) + labs(x = "mat_s11", y = "g_sc") +
+          labs(title = "Model 2 Global Score \n as a function of Mathmatics \n and the score of formulation of Engineering Projects by gender",
+              x = "Mathmatics",
+              y = "The average score of the professional evaluation",
+              color = "Gender")
+plotg_sc2
+```
+
+```{r compare model1 and model2, echo=TRUE}
+stargazer(mmodel_1, mmodel_2, type="text")
+```
+
+```{r partial correlation, echo=TRUE}
+# investigating partial correlation: two variables while controlling for another
+varsmodel <- c("g_sc", "sex", "fep_pro", "mat_s11")
+omitdata <- na.omit(data_acperfor[varsmodel])
+ppcor::spcor.test(omitdata$g_sc, omitdata$mat_s11, omitdata$fep_pro) 
+
+#zero order correlations
+cor(omitdata$g_sc, omitdata$fep_pro)
+cor(omitdata$g_sc, omitdata$mat_s11)
+cor(omitdata$mat_s11, omitdata$fep_pro)
+```
+Reporting Results of partical correlation
+```
+Partial correlation was used to explore the relationship between the global score (as measured by g_sc) and mathmatics while controlling for scores on formulation of engineering projects (fep_pro).Preliminary analyses were performed to ensure no violation of the assumption of normality, linearity and homoscedasticity. There was a stong, positive partial correlatin between, the global scores, mathmatics and the scores on formulation of engineering projects, (r=0.57, n=12,411, p<0.001). An inspection of the zero-order correlation (r=0.26) suggested that the scores on formulation of engineering projects had very little effect on the strength of the relationship between these two variables.
+```
+```{r MLR_Model3, echo=TRUE}
+# add interaction item
+data_acperfor$interaction <- data_acperfor$fep_pro * data_acperfor$mat_s11
+mmodel_3 <- lm(omitdata$g_sc ~ omitdata$sex + omitdata$mat_s11 + data_acperfor$interaction)
+summary(mmodel_3)
+anova(mmodel_3)
+```
+
+```{r analyize mmodel 3, echo=TRUE}
+lm.beta::lm.beta(mmodel_3)
+stargazer(mmodel_3, type="text")
+```
+
+```{r}
+# Visualize the results with a graph
+plotting.data3<-data_acperfor[c("mat_s11","fep_pro", "sex", "interaction")]
+
+plotting.data3$sex <-as.factor(plotting.data3$sex)
+
+plotting.data3$predicted.y <- predict.lm(mmodel_3, newdata=plotting.data3)
+
+```
+```{r, echo=TRUE}
+plotg_sc3 <- ggplot(data_acperfor, aes(x=mat_s11, y=g_sc)) +
+            theme_bw() +
+           geom_point(colour="grey") +
+           geom_line(data=plotting.data3, aes(x=mat_s11, y=predicted.y, colour=sex), size=1) +
+           geom_smooth(method = "lm", colour = "red", se = F) + labs(x = "mat_s11", y = "g_sc") +
+          labs(title = "Model 3 Global Score \n as a function of Mathmatics \n and the score of formulation of engineering projects \n with interaction by gender",
+              x = "Mathmatics",
+              y = "The average score of the professional evaluation",
+              color = "Gender")
+plotg_sc3
+```
+
+```{r echo=TRUE}
+stargazer(mmodel_1, mmodel_2, mmodel_3, type="text")
+```
+# Linear Regression-Assumptions
+## Model 1 g_sc ~ fep_pro + mat_s11
+
+```{r Standardised Residual model 1, echo=TRUE}
+stdres_mmolde1 = rstandard(mmodel_1)
+summary(stdres_mmolde1)
+pastecs::stat.desc(stdres_mmolde1, basic=F)
+```
+1. if standardized residual = [-3.29, 3.29] then no outliers, otherwise, there are outliers [-8.67, 4.62]
+
+```{r, echo=TRUE}
+#Influential observatons
+# An observation that changes the slope of the line. 
+# They have a large influence on the fit of the model. 
+
+#influntial Outlier - cook's distance
+cooksd_mod1 <- sort(cooks.distance(mmodel_1))
+
+#plot Cook's distance, show the values that are greater than one
+plot(cooksd_mod1, pch="*", cex=2, main="Influential observations by Cooks distance for Model 1")
+abline(h=4*mean(cooksd_mod1, na.rm=T), col="red") #cutoff line
+text(x=1:length(cooksd_mod1)+1, y=cooksd_mod1, labels=ifelse(cooksd_mod1>4*mean(cooksd_mod1, na.rom=T), names(cooksd_mod1), ""), col="red")
+
+#find rows related to influential observations
+influential_model1 <- as.numeric(names(cooksd_mod1)[(cooksd_mod1 > 4*mean(cooksd_mod1, na.rm=T))])  # influential row numbers
+stem(influential_model1)
+
+head(data_acperfor[influential_model1, ])  # influential observations.
+head(data_acperfor[influential_model1, ]$fep_pro)  # look at the values of fep_pro
+head(data_acperfor[influential_model1, ]$mat_s11)
+
+car::outlierTest(mmodel_1)
+# Bonferonni p-value for most extreme obs 
+# Are there any cases where the outcome variable has an unusual variable for its predictor values?
+```
+Report outliers for model 1:
+An analysis of standard residuals was carried out on the data to identify any outliers, which indicated three cases for concern which were deleted.
+```{r, echo=TRUE}
+# leverage points: An observation that has a value of x that is far away from the mean of x
+car::leveragePlots(mmodel_1)
+```
+```{r, echo=TRUE}
+#Assess homoscedasticity: ZRESID vs ZPRED
+plot(mmodel_1,1)
+#from the homoscedasticity plot: assumptions met
+plot(mmodel_1,3)
+```
+```{r, echo=TRUE}
+# Normality of residuals
+# create histogram and density plot of the residuals
+plot(density(resid(mmodel_1)))
+
+#create QQ plot for standanside residuals
+car::qqPlot(mmodel_1, main="Normal QQ plot of Regression Standardized Residual for mmodel_1")
+```
+Report for Random Normal Distribution of errors for model 1:
+
+The histogram of standardized residuals indicated that the data contained normally distributed errors, as did the normal Q-Q plot of standardized residuals, which showed most points were extremely close to the line.
+
+```{r, echo=TRUE}
+# non-zero variances
+#pastecs::stat.desc(mmodel_3, basic=F)
+varsmodel <- c("fep_pro", "mat_s11")
+model_predictor <- data_acperfor[varsmodel]
+pastecs::stat.desc(model_predictor, basic=F)
+```
+Non-Zero Report for model 1:
+The data also met the assumption of non-zero variances (Formulation of Engineering Projects = 1610.13; Mathematics = 140.98)
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Collinearity Note:
+Occurs when two or more independent variables contain strongly redundant information.
+If variables are collinear then it means there is not enough distinct information in these variables for MLR to operate – they are essentially measuring the same thing. 
+if we conduct MLR with collinear variables then the model will produce invalid results
+Need to check for collinearity by examining a correlation matrix that compares your independent variables with each other.
+
+```{r, echo=TRUE}
+#Collinearity: above 0.8: might be present.
+# vif > 2.5 or tolenance < 0.4 might be multicollinearity.
+vif_mm1 <- car::vif(mmodel_1)
+vif_mm1
+
+#Calculate tolerance
+1/vif_mm1
+```
+the result show no Multicollinearity. vif: 1.07 < 2.5, tolerance 0.93 > 0.4
+
+Report for colliearity for model 1
+Tests to see if the data met the assumption of collinearity indicated that multicollinearity was not a concert(Formulation of Engineering Projects, Tolerance=0.93, VIF=1.07; Mathematics, Tolerance=0.93, VIF=1.07)
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+## Model 2  g_sc ~ fep_pro + mat_s11 group by sex 
+(dummy code, F-1, M-0)
+
+```{r Standardised Residual model 2, echo=TRUE}
+stdres_mmolde2 = rstandard(mmodel_2)
+summary(stdres_mmolde2)
+pastecs::stat.desc(stdres_mmolde2, basic=F)
+```
+if standardized residual = [-3.29, 3.29] then no outliers, otherwise, there are outliers [-8.64, 4.56]
+
+```{r, echo=TRUE}
+#Influential observatons
+# An observation that changes the slope of the line. 
+# They have a large influence on the fit of the model. 
+
+#influntial Outlier - cook's distance
+cooksd_mod2 <- sort(cooks.distance(mmodel_2))
+
+#plot Cook's distance, show the values that are greater than one
+plot(cooksd_mod2, pch="*", cex=2, main="Influential observations by Cooks distance for Model 2")
+abline(h=4*mean(cooksd_mod2, na.rm=T), col="red") #cutoff line
+text(x=1:length(cooksd_mod2)+1, y=cooksd_mod2, labels=ifelse(cooksd_mod2>4*mean(cooksd_mod2, na.rom=T), names(cooksd_mod2), ""), col="red")
+
+#find rows related to influential observations
+influential_model2 <- as.numeric(names(cooksd_mod2)[(cooksd_mod2 > 4*mean(cooksd_mod2, na.rm=T))])  # influential row numbers
+stem(influential_model2)
+
+head(data_acperfor[influential_model2, ])  # influential observations.
+head(data_acperfor[influential_model2, ]$fep_pro)  # look at the values of fep_pro
+head(data_acperfor[influential_model2, ]$mat_s11)
+head(data_acperfor[influential_model2, ]$sex)
+
+car::outlierTest(mmodel_2)
+# Bonferonni p-value for most extreme obs 
+# Are there any cases where the outcome variable has an unusual variable for its predictor values?
+```
+
+Report outliers for model 2:
+An analysis of standard residuals was carried out on the data to identify any outliers, which indicated two cases for concern which were deleted.
+
+```{r, echo=TRUE}
+# leverage points: An observation that has a value of x that is far away from the mean of x
+car::leveragePlots(mmodel_2)
+```
+```{r, echo=TRUE}
+#Assess homocedasticity: ZRESID y vs ZPRED x
+# ZPRED (the standardized predicted values of the dependent variable based on the model). These values are
+# standardized forms of the values predicted by the model.
+
+# ZRESID (the standardized residuals, or errors). These values are the standardized differences between the
+# observed data and the values that the model predicts).
+
+plot(mmodel_2,1)
+#from the homcedasticity plot: assumptions met
+plot(mmodel_2,3)
+```
+```{r, echo=TRUE}
+# Normality of residuals
+# create histogram and density plot of the residuals
+plot(density(resid(mmodel_2)))
+
+#create QQ plot for standanside residuals
+car::qqPlot(mmodel_2, main="Normal QQ plot \n of Regression Standardized Residual for mmodel_2")
+```
+Report for Random Normal Distribution of errors for model 2:
+The histogram of standardized residuals indicated that the data contained normally distributed errors, as did the normal Q-Q plot of standardized residuals, which showed most points were extremely close to the line.
+
+
+```{r, echo=TRUE}
+# non-zero variances
+varsmodel <- c("fep_pro", "mat_s11","sex")
+model_predictor <- data_acperfor[varsmodel]
+pastecs::stat.desc(model_predictor, basic=F)
+```
+Non-Zero Report for model 2:
+The data also met the assumption of non-zero variances (Formulation of Engineering Projects = 1610.13; Mathematics = 140.98, sex=0.24)
+
+```{r, echo=TRUE}
+#Collinearity: above 0.8: might be present.
+# vif > 2.5 or tolenance < 0.4 might be multicollinearity.
+vif_mm2 <- car::vif(mmodel_2)
+vif_mm2
+
+#Calculate tolerance
+1/vif_mm2
+```
+the result show no Multicollinearity. vif: 1.08, 1.11, 1.03 < 2.5, tolerance 0.93, 0.90, 0.97 > 0.4
+
+Report for colliearity of model 2:
+Tests to see if the data met the assumption of collinearity indicated that multicollinearity was not a concert(Formulation of Engineering Projects, Tolerance=0.93, VIF=1.08; Mathematics, Tolerance=0.90, VIF=1.11; Sex, Tolerance=0.97, VIF=1.03).
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+
+## Model 3  g_sc ~  mat_s11 group by sex + fep_pro*mat_s11
+(dummy code, F-1, M-0)
+interaction item = fep_pro * mat_s11
+
+```{r Standardised Residual model 3, echo=TRUE}
+stdres_mmolde3 = rstandard(mmodel_3)
+summary(stdres_mmolde3)
+pastecs::stat.desc(stdres_mmolde3, basic=F)
+```
+if standardized residual = [-3.29, 3.29] then no outliers, otherwise, there are outliers [-8.62, 4.60]
+
+```{r, echo=TRUE}
+#Influential observatons
+# An observation that changes the slope of the line. 
+# They have a large influence on the fit of the model. 
+
+#influntial Outlier - cook's distance
+cooksd_mod3 <- sort(cooks.distance(mmodel_3))
+
+#plot Cook's distance, show the values that are greater than one
+plot(cooksd_mod3, pch="*", cex=2, main="Influnential observations by Cooks distance for Model 2")
+abline(h=4*mean(cooksd_mod3, na.rm=T), col="red") #cutoff line
+text(x=1:length(cooksd_mod3)+1, y=cooksd_mod3, labels=ifelse(cooksd_mod3>4*mean(cooksd_mod3, na.rom=T), names(cooksd_mod3), ""), col="red")
+
+#find rows related to influential observations
+influential_model3 <- as.numeric(names(cooksd_mod3)[(cooksd_mod3 > 4*mean(cooksd_mod3, na.rm=T))])  # influential row numbers
+stem(influential_model3)
+
+head(data_acperfor[influential_model3, ])  # influential observations.
+head(data_acperfor[influential_model3, ]$mat_s11)
+head(data_acperfor[influential_model3, ]$sex)
+head(data_acperfor[influential_model3, ]$interaction)
+
+car::outlierTest(mmodel_3)
+# Bonferonni p-value for most extreme obs 
+# Are there any cases where the outcome variable has an unusual variable for its predictor values?
+```
+
+Report outliers for model 3:
+An analysis of standard residuals was carried out on the data to identify any outliers, which indicated two cases for concern which were deleted.
+
+```{r, echo=TRUE}
+# leverage points: An observation that has a value of x that is far away from the mean of x
+car::leveragePlots(mmodel_3)
+```
+```{r, echo=TRUE}
+#Assess homocedasticity: ZRESID y vs ZPRED x
+# ZPRED (the standardized predicted values of the dependent variable based on the model). These values are
+# standardized forms of the values predicted by the model.
+
+# ZRESID (the standardized residuals, or errors). These values are the standardized differences between the
+# observed data and the values that the model predicts).
+
+plot(mmodel_3,1)
+#from the homcedasticity plot: assumptions met
+plot(mmodel_3,3)
+```
+```{r, echo=TRUE}
+# Normality of residuals
+# create histogram and density plot of the residuals
+plot(density(resid(mmodel_3)))
+
+#create QQ plot for standanside residuals
+car::qqPlot(mmodel_3, main="Normal QQ plot of Regression Standardized Residual for mmodel_3")
+```
+Report for Random Normal Distribution of errors for model 3:
+The histogram of standardized residuals indicated that the data contained normally distributed errors, as did the normal Q-Q plot of standardized residuals, which showed most points were extremely close to the line.
+
+
+```{r, echo=TRUE}
+# non-zero variances
+varsmodel <- c("interaction", "mat_s11","sex")
+model_predictor <- data_acperfor[varsmodel]
+pastecs::stat.desc(model_predictor, basic=F)
+```
+Non-Zero Report for model 3:
+The data also met the assumption of non-zero variances (Interaction = 1.29e+07	; Mathematics = 140.98, sex=0.24)
+
+```{r, echo=TRUE}
+#Collinearity: above 0.8: might be present.
+# vif > 2.5 or tolenance < 0.4 might be multicollinearity.
+vif_mm3 <- car::vif(mmodel_3)
+vif_mm3
+
+#Calculate tolerance
+1/vif_mm3
+```
+the result show no Multicollinearity. vif: 1.03, 1.93, 1.89 < 2.5, tolerance 0.97, 0.52, 0.53 > 0.4
+
+Report for colliearity of model 3:
+Tests to see if the data met the assumption of collinearity indicated that multicollinearity was not a concert(Interaction, Tolerance=0.53, VIF=1.89; Mathematics, Tolerance=0.52, VIF=1.93; Sex, Tolerance=0.97, VIF=1.03).
+
